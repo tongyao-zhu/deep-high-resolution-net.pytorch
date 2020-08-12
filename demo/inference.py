@@ -176,9 +176,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train keypoints network')
     # general
     parser.add_argument('--cfg', type=str, required=True)
-    parser.add_argument('--videoFile', type=str, required=True)
-    parser.add_argument('--outputDir', type=str, default='/output/')
-    parser.add_argument('--inferenceFps', type=int, default=10)
+    parser.add_argument('--video_dir', type=str, required=True)
+    parser.add_argument('--output_dir', type=str, default='/output/')
     parser.add_argument('--writeBoxFrames', action='store_true')
 
     parser.add_argument('opts',
@@ -195,10 +194,17 @@ def parse_args():
     args.prevModelDir = ''
     return args
 
+def get_image_paths(video_path):
+    image_names= sorted(filter(lambda x: x[-4: ]==".png", os.listdir(video_path)))
+
+    full_image_paths = list(map(lambda x: (video_path +x).replace("\n", ""), image_names))
+    images_list = full_image_paths
+    return images_list
 
 def main():
     # transformation
     pose_transform = transforms.Compose([
+        transforms.resize(224,224),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225]),
@@ -231,28 +237,12 @@ def main():
     pose_model.eval()
 
     # Loading an video
-    vidcap = cv2.VideoCapture(args.videoFile)
-    fps = vidcap.get(cv2.CAP_PROP_FPS)
-    if fps < args.inferenceFps:
-        print('desired inference fps is '+str(args.inferenceFps)+' but video fps is '+str(fps))
-        exit()
-    skip_frame_cnt = round(fps / args.inferenceFps)
-    frame_width = int(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    outcap = cv2.VideoWriter('{}/{}_pose.avi'.format(args.outputDir, os.path.splitext(os.path.basename(args.videoFile))[0]),
-                             cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), int(skip_frame_cnt), (frame_width, frame_height))
-
+    # vidcap = cv2.VideoCapture(args.videoFile)
     count = 0
-    while vidcap.isOpened():
+    for image_path in get_image_paths(video_path):
+        image_bgr = cv2.imread(image_path)
         total_now = time.time()
-        ret, image_bgr = vidcap.read()
         count += 1
-
-        if not ret:
-            continue
-
-        if count % skip_frame_cnt != 0:
-            continue
 
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
@@ -317,7 +307,6 @@ def main():
         csv_output_rows.append(new_csv_row)
         img_file = os.path.join(pose_dir, 'pose_{:08d}.jpg'.format(count))
         cv2.imwrite(img_file, image_debug)
-        outcap.write(image_debug)
 
 
     # write csv
@@ -330,11 +319,6 @@ def main():
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(csv_headers)
         csvwriter.writerows(csv_output_rows)
-
-    vidcap.release()
-    outcap.release()
-
-    cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
