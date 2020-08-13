@@ -218,7 +218,7 @@ def main():
     args = parse_args()
     update_config(cfg, args)
     video_path = args.video_dir
-    pose_dir = prepare_output_dirs(args.outputDir)
+    pose_dir = prepare_output_dirs(args.output_dir)
     csv_output_rows = []
 
     box_model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
