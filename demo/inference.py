@@ -204,7 +204,7 @@ def get_image_paths(video_path):
 def main():
     # transformation
     pose_transform = transforms.Compose([
-        transforms.resize(224,224),
+        transforms.Resize((224,224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225]),
@@ -217,6 +217,7 @@ def main():
 
     args = parse_args()
     update_config(cfg, args)
+    video_path = args.video_path
     pose_dir = prepare_output_dirs(args.outputDir)
     csv_output_rows = []
 
