@@ -315,7 +315,7 @@ def main():
     for keypoint in COCO_KEYPOINT_INDEXES.values():
         csv_headers.extend([keypoint+'_x', keypoint+'_y'])
 
-    csv_output_filename = os.path.join(args.outputDir, 'pose-data.csv')
+    csv_output_filename = os.path.join(args.output_dir, 'pose-data.csv')
     with open(csv_output_filename, 'w', newline='') as csvfile:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(csv_headers)
