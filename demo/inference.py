@@ -241,6 +241,7 @@ def main():
     # vidcap = cv2.VideoCapture(args.videoFile)
     count = 0
     for image_path in get_image_paths(video_path):
+        print(f"reading image {image_path}")
         image_bgr = cv2.imread(image_path)
         total_now = time.time()
         count += 1
