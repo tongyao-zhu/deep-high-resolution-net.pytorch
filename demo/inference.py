@@ -197,7 +197,7 @@ def parse_args():
 def get_image_paths(video_path):
     image_names= sorted(filter(lambda x: x[-4: ]==".png", os.listdir(video_path)))
 
-    full_image_paths = list(map(lambda x: (video_path +x).replace("\n", ""), image_names))
+    full_image_paths = list(map(lambda x: os.path.join(video_path, x), image_names))
     images_list = full_image_paths
     return images_list
 
