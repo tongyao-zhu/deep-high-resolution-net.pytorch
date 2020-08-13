@@ -176,7 +176,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train keypoints network')
     # general
     parser.add_argument('--cfg', type=str, required=True)
-    parser.add_argument('--video_dir', type=str, required=True)
+    parser.add_argument('--video_root', type=str, required=True)
     parser.add_argument('--output_dir', type=str, default='/output/')
     parser.add_argument('--writeBoxFrames', action='store_true')
 
@@ -201,10 +201,13 @@ def get_image_paths(video_path):
     images_list = full_image_paths
     return images_list
 
+def get_keypoints_for_video(video_path):
+    return
+
 def main():
+    print("change from pycharm")
     # transformation
     pose_transform = transforms.Compose([
-        transforms.Resize((224,224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225]),
@@ -217,7 +220,7 @@ def main():
 
     args = parse_args()
     update_config(cfg, args)
-    video_path = args.video_dir
+    video_root = args.video_root
     pose_dir = prepare_output_dirs(args.output_dir)
     csv_output_rows = []
 
@@ -237,90 +240,106 @@ def main():
     pose_model.to(CTX)
     pose_model.eval()
 
-    # Loading an video
-    # vidcap = cv2.VideoCapture(args.videoFile)
-    count = 0
-    for image_path in get_image_paths(video_path):
-        print(f"reading image {image_path}")
-        image_bgr = cv2.imread(image_path)
-        total_now = time.time()
-        count += 1
+    video_names = os.listdir(video_root)
+    video_path_list = [os.path.join(video_root, x) for x in video_names]
 
-        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    for video_path in video_path_list:
+        # Loading an video
+        # vidcap = cv2.VideoCapture(args.videoFile)
+        count = 0
+        tensor_list = []
 
-        # Clone 2 image for person detection and pose estimation
-        if cfg.DATASET.COLOR_RGB:
-            image_per = image_rgb.copy()
-            image_pose = image_rgb.copy()
-        else:
-            image_per = image_bgr.copy()
-            image_pose = image_bgr.copy()
-
-        # Clone 1 image for debugging purpose
-        image_debug = image_bgr.copy()
-
-        # object detection box
-        now = time.time()
-        pred_boxes = get_person_detection_boxes(box_model, image_per, threshold=0.9)
-        then = time.time()
-        print("Find person bbox in: {} sec".format(then - now))
-
-        # Can not find people. Move to next frame
-        if not pred_boxes:
+        for image_path in get_image_paths(video_path):
+            # print(f"reading image {image_path}")
+            image_bgr = cv2.imread(image_path)
+            # print(f"image has shape {image_bgr.shape}")
+            total_now = time.time()
             count += 1
-            continue
 
-        if args.writeBoxFrames:
+            image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+
+            # Clone 2 image for person detection and pose estimation
+            if cfg.DATASET.COLOR_RGB:
+                image_per = image_rgb.copy()
+                image_pose = image_rgb.copy()
+            else:
+                image_per = image_bgr.copy()
+                image_pose = image_bgr.copy()
+
+            # Clone 1 image for debugging purpose
+            image_debug = image_bgr.copy()
+
+            # object detection box
+            now = time.time()
+            pred_boxes = get_person_detection_boxes(box_model, image_per, threshold=0.9)
+            then = time.time()
+            # print("Find person bbox in: {} sec".format(then - now))
+
+            # Can not find people. Move to next frame
+            if not pred_boxes:
+                count += 1
+                continue
+
+            if args.writeBoxFrames:
+                for box in pred_boxes:
+                    cv2.rectangle(image_debug, box[0], box[1], color=(0, 255, 0),
+                                  thickness=3)  # Draw Rectangle with the coordinates
+
+            # pose estimation : for multiple people
+            centers = []
+            scales = []
             for box in pred_boxes:
-                cv2.rectangle(image_debug, box[0], box[1], color=(0, 255, 0),
-                              thickness=3)  # Draw Rectangle with the coordinates
+                center, scale = box_to_center_scale(box, cfg.MODEL.IMAGE_SIZE[0], cfg.MODEL.IMAGE_SIZE[1])
+                centers.append(center)
+                scales.append(scale)
 
-        # pose estimation : for multiple people
-        centers = []
-        scales = []
-        for box in pred_boxes:
-            center, scale = box_to_center_scale(box, cfg.MODEL.IMAGE_SIZE[0], cfg.MODEL.IMAGE_SIZE[1])
-            centers.append(center)
-            scales.append(scale)
+            now = time.time()
+            pose_preds = get_pose_estimation_prediction(pose_model, image_pose, centers, scales, transform=pose_transform)
+            then = time.time()
+            # print("Find person pose in: {} sec".format(then - now))
 
-        now = time.time()
-        pose_preds = get_pose_estimation_prediction(pose_model, image_pose, centers, scales, transform=pose_transform)
-        then = time.time()
-        print("Find person pose in: {} sec".format(then - now))
+            new_csv_row = []
+            needed_indices = [0,5,6,7,8,9,10]
+            needed_points = torch.from_numpy(pose_preds[:, needed_indices, :])
+            # print(f"pose pred is {pose_preds.shape}")
+            tensor_list.append(needed_points)
+            for coords in needed_points:
+                # Draw each point on image
+                for coord in coords:
+                    x_coord, y_coord = int(coord[0]), int(coord[1])
+                    cv2.circle(image_debug, (x_coord, y_coord), 4, (255, 0, 0), 2)
+                    new_csv_row.extend([x_coord, y_coord])
 
-        new_csv_row = []
-        for coords in pose_preds:
-            # Draw each point on image
-            for coord in coords:
-                x_coord, y_coord = int(coord[0]), int(coord[1])
-                cv2.circle(image_debug, (x_coord, y_coord), 4, (255, 0, 0), 2)
-                new_csv_row.extend([x_coord, y_coord])
+            total_then = time.time()
 
-        total_then = time.time()
+            # text = "{:03.2f} sec".format(total_then - total_now)
+            # cv2.putText(image_debug, text, (100, 50), cv2.FONT_HERSHEY_SIMPLEX,
+            #                    1, (0, 0, 255), 2, cv2.LINE_AA)
 
-        text = "{:03.2f} sec".format(total_then - total_now)
-        cv2.putText(image_debug, text, (100, 50), cv2.FONT_HERSHEY_SIMPLEX,
-                            1, (0, 0, 255), 2, cv2.LINE_AA)
+            # cv2.imshow("pos", image_debug)
+            # if cv2.waitKey(1) & 0xFF == ord('q'):
+            #     break
 
-        cv2.imshow("pos", image_debug)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-        csv_output_rows.append(new_csv_row)
-        img_file = os.path.join(pose_dir, 'pose_{:08d}.jpg'.format(count))
-        cv2.imwrite(img_file, image_debug)
+            csv_output_rows.append(new_csv_row)
+            # img_file = os.path.join(pose_dir, 'pose_{:08d}.jpg'.format(count))
+            # cv2.imwrite(img_file, image_debug)
 
 
-    # write csv
-    csv_headers = ['frame']
-    for keypoint in COCO_KEYPOINT_INDEXES.values():
-        csv_headers.extend([keypoint+'_x', keypoint+'_y'])
+        all_point_tensor = torch.cat(tensor_list)
+        print(f"all point tensor has shape {all_point_tensor.shape}")
+        video_name = video_path.split("/")[-1]
+        torch.save(all_point_tensor, os.path.join(args.output_dir, f"{video_name}.npy"))
+        # write csv
+        csv_headers = ['frame']
+        for keypoint in COCO_KEYPOINT_INDEXES.values():
+            csv_headers.extend([keypoint+'_x', keypoint+'_y'])
 
-    csv_output_filename = os.path.join(args.outputDir, 'pose-data.csv')
-    with open(csv_output_filename, 'w', newline='') as csvfile:
-        csvwriter = csv.writer(csvfile)
-        csvwriter.writerow(csv_headers)
-        csvwriter.writerows(csv_output_rows)
+        csv_output_filename = os.path.join(args.output_dir, f'{video_name}.csv')
+        with open(csv_output_filename, 'w', newline='') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(csv_headers)
+            csvwriter.writerows(csv_output_rows)
+        print(f"finished getting keypoints of video {video_name}")
 
 
 if __name__ == '__main__':
