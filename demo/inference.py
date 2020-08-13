@@ -217,7 +217,7 @@ def main():
 
     args = parse_args()
     update_config(cfg, args)
-    video_path = args.video_path
+    video_path = args.video_dir
     pose_dir = prepare_output_dirs(args.outputDir)
     csv_output_rows = []
 
